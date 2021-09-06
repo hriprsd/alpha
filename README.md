@@ -1,2 +1,2 @@
-# alpha
-for aws devops session
+# kubfiles
+This repo to hold Kubernetes deployment files
