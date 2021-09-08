@@ -1,0 +1,203 @@
+====================================================================================
+Scenario:
+====================================================================================
+Learning about how to use and install ELK stack on AWS Cloud
+
+====================================================================================
+What we require ?
+====================================================================================
+a.	An m4.large Instance (2vCPU & 8 GB RAM) x 03 Instances(01-Elasticsearch | 01-Logstash | 01 - Kibana)
+b 	OS - Amazon Linux 3 EC2 Instance
+c.	Security group for ELK instance with 9100/9200/5601 port to be opened
+d.  Use if required, export JAVA_HOME="/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.265.b01-1.amzn2.0.1.x86_64/jre/",
+e.	Use if required, export PATH=$JAVA_HOME/bin:$PATH
+
+====================================================================================
+Steps to be followed
+====================================================================================
+====================================================================================
+Installation for Elasticsearch
+====================================================================================
+E1. 	SSH to Instance, and update the packages
+					$ sudo hostname elasticsearch
+					$ sudo su
+					$ cd
+					$ sudo yum update -y
+
+E2. 	Install Java as Elasticsearch does support Java 8.0
+					$ java -version
+					$	sudo yum -y install java-1.8.0-openjdk
+					$ sudo yum -y remove java-1.7.0-openjdk
+
+E3. 	Install Elasticsearch GPG Key
+					$ sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+E4. 	Installing from the RPM repository.Create a file called `elasticsearch.repo` in the `/etc/yum.repos.d/` directory
+	 	 			$ nano /etc/yum.repos.d/elasticsearch.repo
+
+								 	[elasticsearch]
+								 	name=Elasticsearch repository for 7.x packages
+								 	baseurl=https://artifacts.elastic.co/packages/7.x/yum
+								 	gpgcheck=1
+								 	gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+								 	enabled=0
+								 	autorefresh=1
+								 	type=rpm-md
+
+E5. 	Install from RPM Repo
+		 			$ sudo yum install --enablerepo=elasticsearch elasticsearch -y
+
+E6. 	To start Elasticsearch when the system boots up automatically, we can use `chkconfig` command to configure Elasticsearch
+					$ sudo systemctl status elasticsearch
+					$ sudo chkconfig --add elasticsearch
+
+E7. 	Elasticsearch can be started and stopped using the `service` command
+					$ sudo -i service elasticsearch start
+					$ sudo -i service elasticsearch stop
+					$ sudo systemctl status elasticsearch
+
+E8.	 If Elasticsearch doesnt allow to run commands in root mode, please Add Property to allow on root.
+					$ ES_JAVA_OPTS="-Des.insecure.allow.root=true"
+
+E09.  Configuring Access to Elasticsearch through Public IP.Typically you add your corporate IP/private IP and allow the same in the firewall/security group to allow access to Elasticsearch.
+					$ sudo service elasticsearch stop
+					$ sudo nano /etc/elasticsearch/elasticsearch.yml
+
+								network.host: "PrivateIp"
+								http.port: 9200
+								discovery.seed_hosts: ["PrivateIp"]
+								cluster.initial_master_nodes: ["PrivateIp"]  #PrivateIp of EC2 Instance
+
+					$ sudo -i service elasticsearch start
+					$ sudo systemctl status elasticsearch
+					$ curl http://localhost:9200
+
+E10. Accessing the ES through GUI, install this chrome plugin
+
+					$ sudo yum install git -y
+					$ git clone git://github.com/mobz/elasticsearch-head.git
+					$ sudo yum install -y gcc-c++ make
+					$ curl -sL https://rpm.nodesource.com/setup_14.x | sudo -E bash -
+					$ sudo yum install -y nodejs
+					$ cd elasticsearch-head
+					$ npm install
+					$ npm run start
+					$ curl http://localhost:9100/
+
+E12.	From your browser, ping to the public IP of your ES Cluster at port 9200
+
+====================================================================================
+Installation for Logstash 1.5.4-1
+====================================================================================
+L1. 	Installing from the RPM repository
+					$ sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+L2. 	Create a file called `logstash.repo` in the `/etc/yum.repos.d/` directory. The below repo is for Logstash version 6.x
+					$ sudo nano /etc/yum.repos.d/logstash.repo
+								[logstash-7.x]
+								name=Elastic repository for 7.x packages
+								baseurl=https://artifacts.elastic.co/packages/7.x/yum
+								gpgcheck=1
+								gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+								enabled=1
+								autorefresh=1
+								type=rpm-md
+
+L3. 	Install Logstash
+					$ sudo yum -y install logstash
+
+L4. 	Configure Logstash
+				The configuration above tells Logstash to collect all files with `.log` extention in `/var/log`, `/var/log/messages` and `/var/log/syslog`.
+				And we will create a filter to prevent Elasticsearch to store logs in the message field and simplify the analysis.
+
+						# File Inputs & Outputs
+						echo 'input {
+						  file {
+						    path => [ "/var/log/*.log", "/var/log/messages", "/var/log/syslog" ]
+						    type => "syslog"
+						  }
+						}
+						output {
+						    elasticsearch {
+						        hosts => ["http://<public-dns-for-elasticsearch>>:9200/"]
+						    }
+						    #stdout { codec => rubydebug }
+						}' | sudo tee /etc/logstash/conf.d/logstash-syslog.conf
+
+
+					# Filter configuration
+					echo 'filter {
+					  if [type] == "syslog" {
+					    grok {
+					      match => { "message" => "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:syslog_hostname} %{DATA:syslog_program}(?:\[%{POSINT:syslog_pid}\])?: %{GREEDYDATA:syslog_message}" }
+					      add_field => [ "received_at", "%{@timestamp}" ]
+					      add_field => [ "received_from", "%{host}" ]
+					    }
+					    date {
+					      match => [ "syslog_timestamp", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss" ]
+					    }
+					  }
+					}' | sudo tee /etc/logstash/conf.d/logstash-syslog-filter.conf
+
+					$ sudo nano /etc/logstash/conf.d/logstash-syslog.conf
+					$ sudo nano /etc/logstash/conf.d/logstash-syslog-filter.conf
+
+L7. 	Logstash needs permissions to access the log files,Add `logstash` group to have read permissions on the log files that you like to be shipped
+
+					$ chgrp logstash /var/log/*.log /var/log/messages
+					$ chmod g+r /var/log/*.log /var/log/messages
+
+L8. 	To Start Logstash automatically when the system boots up
+					$ /usr/share/logstash/bin/system-install /etc/logstash/startup.options sysv
+					$ sudo chkconfig --add logstash
+
+L9. 	To Stop/Start Logstash
+					$ sudo -i service logstash stop
+					$ sudo -i service logstash start
+					$ /usr/share/logstash/bin/logstash -f /etc/logstash/conf.d/ &
+
+================================================================================================================
+Installation of Kibana
+================================================================================================================
+K1. 	Accept the GPG key and accept the ElasticSearch GPG Key
+					$ sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+
+K2. 	Create a file called `kibana.repo` in the `/etc/yum.repos.d/` directory. The below repo is for `Kibana` version `6.x`
+				  $ sudo nano /etc/yum.repos.d/kibana.repo
+									[kibana-7.x]
+									name=Kibana repository for 7.x packages
+									baseurl=https://artifacts.elastic.co/packages/7.x/yum
+									gpgcheck=1
+									gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+									enabled=1
+									autorefresh=1
+									type=rpm-md
+
+K3.		Install from RPM Repo
+					 	$ sudo yum -y install kibana
+
+K4. 	To use Kibana to start automatically when the system boots up
+						$ sudo chkconfig --add kibana
+
+K5.		To Stop/Start Kibana
+				 		$ sudo -i service kibana stop
+						$ sudo -i service kibana start
+						$ sudo systemctl status kibana
+
+K6. 	Kibana loads its configuration from the `/etc/kibana/kibana.yml` file by default.
+					 $ sudo nano /etc/kibana/kibana.yml
+					 		server.host: "<PrivateIP-of-Kibana>"
+					 		server.port: 5601
+					 		elasticsearch.url: "http://<public-dns-of-elasticsearch>:9200/"
+
+K7.		To Stop/Start Kibana
+				 		$ sudo -i service kibana stop
+						$ sudo -i service kibana start
+						$ sudo systemctl status kibana
+K8.   Move to browser, and run http://<public-dns-of-kibana>:5601 and nagivate to "Discover"
+							ex: http://<public-dns-of-kibana>:5601/app/discover#/
+
+K9.  Move to "Management Tab -->Stack Management -->Index patterns--->Create index pattern"
+     				# Enable <Include Hidden indices>
+
+			*IMPORTANT Note:** 	Make sure that port 5601 is open in your security group!

@@ -1,0 +1,75 @@
+====================================================================================
+Scenario:
+====================================================================================
+Learning about how to use and install ELK stack on AWS Cloud
+
+====================================================================================
+What we require ?
+====================================================================================
+a.	An EC2 m4.large Instance (2vCPU & 8 GB RAM) x 01 Instances
+b 	OS - Ubuntu  Instance
+c.	Security group for ELK instance with 9200/9300/5601 port to be opened
+
+====================================================================================
+Steps to be followed
+====================================================================================
+====================================================================================
+Installation for Elasticsearch
+====================================================================================
+E1. SSH to Instance, and update the packages
+		sudo su
+		cd
+		sudo apt-get update -y
+		wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+
+E2.	For Debian, we need to then install the apt-transport-https package:
+		sudo apt-get update -y
+		sudo apt-get install apt-transport-https -y
+
+E3. Add the repository definition to your system:
+		echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+		sudo apt-get update -y
+		sudo apt-get install elasticsearch -y
+
+E4.	sudo nano /etc/elasticsearch/elasticsearch.yml
+  		snetwork.host: "192.168.1.69"
+  		http.port: 9200
+  		cluster.initial_master_nodes: ["localhost", "127.0.0.1"]
+
+E5  sudo service elasticsearch start
+		sudo service elasticsearch stop
+		sudo service elasticsearch start
+		sudo systemctl status elasticsearch
+
+E6. curl localhost:9200
+
+E7.	From your browser, ping to the public IP of your ES Cluster at port 9200
+
+====================================================================================
+Installation for Logstash 1.5.4-1
+====================================================================================
+L1. 	Install Java as Logstash will need Java to run
+				sudo apt-get update -y
+				java -version
+				sudo apt-get install default-jre -y
+				sudo apt-get install logstash -y
+
+
+================================================================================================================
+Installation of Kibana
+================================================================================================================
+K1. 	sudo su
+			cd
+			sudo apt-get update -y
+			wget https://artifacts.elastic.co/downloads/kibana/kibana-7.6.1-amd64.deb
+    	sudo dpkg -i kibana-7.*
+
+K2.		Open up the Kibana configuration file at: /etc/kibana/kibana.yml,
+			and make sure you have the following configurations defined:
+		   sudo nano /etc/kibana/kibana.yml
+  	 		server.host: 192.168.1.69
+  			server.port: 5601
+  			elasticsearch.hosts: ["http://192.168.1.69:9200"]
+			sudo service kibana stop
+			sudo service kibana start
+			sudo systemctl status kibana

@@ -1,2 +1,2 @@
-# kubfiles
-This repo to hold Kubernetes deployment files
+# aws devops session - september
+

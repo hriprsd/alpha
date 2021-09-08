@@ -1,0 +1,49 @@
+{
+  "Resources": {
+    "alphaInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "KeyName": "deltakp",
+        "ImageId": "ami-03cfb5e1fb4fac428",
+        "InstanceType": "m4.large",
+        "SecurityGroupIds": [
+          {
+            "Ref": "MyEC2SG"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "HelloInstancebyCF"
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -ex \n",
+                "sudo apt-get update -y"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "MyEC2SG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Allows Port 80 for HTTP",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "VpcId": "vpc-5887ce30"
+      }
+    }
+  }
+}

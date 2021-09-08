@@ -1,0 +1,187 @@
+====================================================================================================================
+What is Nagios ?
+====================================================================================================================
+  - Nagios is one of the most widely used open source monitoring tool
+  - Used for monitoring the services and application that run’s on Windows and Linux
+  - It also has the capability to monitor routers and other network devices.
+====================================================================================================================
+Scenario:
+====================================================================================================================
+Using Nagios Server 4.4.6, will perform monitoring of other machines loaded with Nagios Client
+  a. 2 Ubuntu AWS EC2 Instances
+  b. 1-Nagios Server & 1-Host machine
+  c. Package for Nagios Server Download- http://prdownloads.sourceforge.net/sourceforge/nagios/nagios-4.0.8.tar.gz
+  d. Installation of nagios-plugins nagios-nrpe-server
+
+====================================================================================================================
+Steps to be followed:
+====================================================================================================================
+####################################################################################################################
+NAGIOS SERVER 4.0.8 ON SERVER MACHINCE
+####################################################################################################################
+
+------------------------------------------------------------
+Step 1 – Prerequisite
+------------------------------------------------------------
+  $ sudo su
+  $ cd
+  $ apt-get update -y
+  $ sudo apt-get install wget build-essential unzip openssl libssl-dev -y
+  $ sudo apt-get install apache2 php libapache2-mod-php php-gd libgd-dev -y
+
+------------------------------------------------------------
+Step 2 – Create Nagios User
+------------------------------------------------------------
+  $ sudo adduser nagios
+  $ sudo groupadd nagcmd
+  $ sudo usermod -a -G nagcmd nagios
+  $ sudo usermod -a -G nagcmd www-data
+
+------------------------------------------------------------
+Step 3 – Install Nagios Core Service
+------------------------------------------------------------
+  $ cd /tmp
+  $ wget https://assets.nagios.com/downloads/nagioscore/releases/nagios-4.4.6.tar.gz
+  $ tar -zxvf /tmp/nagios-4.4.3.tar.gz
+  $ cd /tmp/nagios-4.4.3/
+
+Perform the below steps to compile the Nagios from the source code.
+
+  $ ./configure --with-nagios-group=nagios --with-command-group=nagcmd --with-httpd_conf=/etc/apache2/sites-enabled/
+  $ make all
+  $ make install
+  $ make install-init
+  $ make install-config
+  $ make install-commandmode
+
+------------------------------------------------------------
+Step 4 -  Configure Nagios
+------------------------------------------------------------
+  $ vi /usr/local/nagios/etc/objects/contacts.cfg     # Edit the /usr/local/nagios/etc/objects/contacts.cfg file and change the email address
+
+------------------------------------------------------------
+Step 5 - Install Nagios Web Interface
+------------------------------------------------------------
+  $ make install-webconf                              # Create a user account (nagiosadmin) for logging into the Nagios web interface.
+  $ htpasswd -c /usr/local/nagios/etc/htpasswd.users nagiosadmin
+  $ a2enmod cgi
+  $ systemctl restart apache2
+
+------------------------------------------------------------
+Step 6 - Install Nagios Plugins
+------------------------------------------------------------
+  $ cd /tmp
+  $ wget https://nagios-plugins.org/download/nagios-plugins-2.2.1.tar.gz
+  $ tar -zxvf /tmp/nagios-plugins-2.2.1.tar.gz
+  $ cd /tmp/nagios-plugins-2.2.1/
+  $ ./configure --with-nagios-user=nagios --with-nagios-group=nagios
+  $ make
+  $ make install
+
+------------------------------------------------------------
+Step 7 - Start Nagios
+------------------------------------------------------------
+  $ /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+  $ systemctl enable nagios  #Enable Nagios to start automatically at system startup.
+  $ systemctl start nagios
+
+------------------------------------------------------------
+Step 8 – Access Nagios Web Interface
+------------------------------------------------------------
+Access your nagios setup by access nagios server using hostname or ip address followed by /nagios.
+
+#########################################################################################################
+Monitor Remote Linux Systems With Nagios
+#########################################################################################################
+1.  Install NRPE Add-on & Nagios Plugins
+  $ sudo su
+  $ sudo apt-get update -y
+  $ sudo apt-get dist-upgrade -y
+  $ sudo apt-get autoremove -y
+  $ sudo apt-get install nagios-plugins nagios-nrpe-server -y
+
+2. Configure NRPE Add-on
+  $ nano /etc/nagios/nrpe.cfg
+    allowed_hosts = PRIVATE_IP_NAGIOS_SERVER
+
+3. Restart the NRPE service.
+    $ service nagios-nrpe-server restart
+
+#########################################################################################################
+Configuration over Nagios Server
+#########################################################################################################
+
+1.  Install NRPE plugin
+  $ sudo apt install -y nagios-nrpe-plugin
+  $ sudo nano /usr/local/nagios/etc/nagios.cfg        # Uncomment cfg_dir=/usr/local/nagios/etc/servers
+  $ sudo mkdir /usr/local/nagios/etc/servers
+
+2.  Add Command Definition
+  $ sudo nano /usr/local/nagios/etc/objects/commands.cfg
+      define command{
+        command_name check_nrpe
+        command_line /usr/lib/nagios/plugins/check_nrpe -H $HOSTADDRESS$ -t 30 -c $ARG1$
+        }
+
+3. Add a Linux host to Nagios server
+  Create a client configuration file /usr/local/nagios/etc/servers/remote-host-agent1.cfg
+  to define the host and service definitions of remote Linux host.
+  $ sudo nano /usr/local/nagios/etc/servers/remote-host-agent1.cfg
+
+      define host{
+                use                     linux-server
+                host_name               remote-host-agent1
+                alias                   remote-host-agent1
+                address                 172.16.1.69
+                }
+      define hostgroup{
+                hostgroup_name          linux-server
+                alias                   Linux Servers
+                members                 remote-host-agent1
+                }
+      define service{
+                use                     local-service
+                host_name               remote-host-agent1
+                service_description     SWAP Uasge
+                check_command           check_nrpe!check_swap
+                }
+      define service{
+                use                     local-service
+                host_name               remote-host-agent1
+                service_description     Root / Partition
+                check_command           check_nrpe!check_root
+                }
+      define service{
+                use                     local-service
+                host_name               remote-host-agent1
+                service_description     Current Users
+                check_command           check_nrpe!check_users
+                }
+      define service{
+                use                     local-service
+                host_name               remote-host-agent1
+                service_description     Total Processes
+                check_command           check_nrpe!check_total_procs
+                }
+      define service{
+                use                     local-service
+                host_name               remote-host-agent1
+                service_description     Current Load
+                check_command           check_nrpe!check_load
+                }
+
+4. $ /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+
+5. Restart the Nagios server.
+  $ sudo systemctl restart nagios
+
+6. Following is the quick fix for Nagios Server ,which failed to list Nagios Host status as "UP"
+Note:
+    - Go to EC2 Dashboard and click "Running Instances" on "Security Groups", select the group of your instance which you need to add security.
+    - click on the "Inbound" tab
+    - Click "Edit" Button (It will open an popup window)
+    - click "Add Rule"
+    - Select the "Custom ICMP rule - IPv4" as Type
+    - Select "Echo Request" and "Echo Response" as the Protocol (Port Range by default show as "N/A)
+    - Enter the "0.0.0.0/0" as Source
+    - Click "Save"
